@@ -1,8 +1,8 @@
 clc;
+clear;
 t_start = 0;
-t_end = 1000;
-del_t = 10;
-times = [t_start:del_t:t_end];
+del_t = 600;
+times(1) = t_start;
 
 %% Berg position setup
 berg_v = [0,0];
@@ -18,7 +18,7 @@ berg_lon(1) = berg_lon_start;
 direction(1,:) = calc_path(berg_lat_start, berg_lon_start);
 
 berg_size = [200,200,70];
-berg_mass = berg_size(1)*berg_size(2)*berg_size(3)*1000;
+berg_mass(1) = berg_size(1)*berg_size(2)*berg_size(3)*1000;
 
 %% Air/wind setup
 air_lat = ncread('wind_data.nc','lat');
@@ -59,20 +59,23 @@ disp("Starting main loop...")
 % berg_lat = zeros(length(times) + 1);
 % berg_lon = zeros(length(times) + 1);
 counter = 1;
-for t = times
+while abs(berg_lon(counter) - 33.9249) > .1
+    t = times(counter);
     direction(counter + 1,:) = calc_path(berg_lat, berg_lon);
     
     water_velocity(counter + 1,:) = get_current(water_lat, water_lon, water_u, water_v, berg_lat(counter), berg_lon(counter));
     air_velocity(counter + 1,:) = get_wind(air_lat, air_lon, air_u, air_v, berg_lat(counter), berg_lon(counter));
     water_temp(counter + 1) = get_temp(temp_lat, temp_lon, temps, berg_lat(counter), berg_lon(counter));
     
-    berg_size(1) = temp_melting(water_temp(counter), del_t);
+    berg_size(1) = berg_size(1) - temp_melting(water_temp(counter), del_t);
+    berg_mass(counter + 1) = berg_size(1)*berg_size(2)*berg_size(3)*1000;
+    
     air_force = F_air(air_velocity(counter,:),berg_v(counter,:), berg_size);
     water_force = F_water(water_velocity(counter,:), berg_v(counter,:), berg_size);
     boat_force = F_boat(direction(counter,:), air_force + water_force);
     berg_force = air_force + water_force + boat_force;
     
-    berg_v(counter + 1,:) = berg_v(counter, :) + (del_t/berg_mass).*( ...
+    berg_v(counter + 1,:) = berg_v(counter, :) + (del_t/berg_mass(counter)).*( ...
           berg_force);
     
     norm_berg(counter) = norm(berg_v(counter,:));
@@ -83,51 +86,38 @@ for t = times
     berg_lon(counter + 1) = berg_lon_start + meter_to_lon(berg_x(counter));
     
     
-    if mod(t,10) == 0
+    if mod(counter,25) == 0
         disp(t)
+        disp(abs(berg_lon(counter) - 33.9249))
     end
+    times(counter + 1) = times(counter) + del_t;
     counter = counter + 1;
 end
-
-% %% FREE BODY DIAGRAM
-% figure(1)
-% quiver([0,0,0],[0,0,0], [air_force(1),water_force(1), berg_force(1)], [air_force(2),water_force(2), berg_force(2)])
-% title("Free Body Diagram of Iceberg")
-% xlabel("Force (N)")
-% ylabel("Force (N)")
-% xlim([-20 20])
-% ylim([-20 20])
-% 
-% %% ICEBERG POSITION (Small Scale)
-% figure(2)
-% scatter(berg_x,berg_y)
-% title("Position of Iceberg (Small Scale)")
-% xlabel("X Position (m)")
-% ylabel("Y Position (m)")
-
+figure(1)
 %% ICEBERG POSITION (Large Scale)
-figure(3)
+subplot(1,3,1)
 scatter(berg_lon,berg_lat)
 
 title("Position of Iceberg (Large Scale)")
 xlabel("X Position (km)")
 ylabel("Y Position (km)")
 
-% %% Tugboat Force 
-% figure(4)
-% plot(times, norm_berg)
-% 
-% title("Tugboat Force Required to Maintain Desired Course")
-% xlabel("Time (hours)");
-% ylabel("Force Required (N)");
-% 
-% %% Mass loss
-% figure(5)
-% plot(times, [10000:-100:0])
-% 
-% title("Iceberg Mass Loss")
-% xlabel("Time (hours)")
-% ylabel("Icberg Mass (kg)")
+%% Tugboat Force 
+subplot(1,3,2)
+plot(times(1:end-1)./3600, norm_berg)
+
+title("Tugboat Force Required to Maintain Desired Course")
+xlabel("Time (hours)");
+ylabel("Force Required (N)");
+
+%% Mass loss
+subplot(1,3,3)
+plot(times./3600, berg_mass)
+
+title("Iceberg Mass Loss")
+xlabel("Time (hours)")
+ylabel("Icberg Mass (kg)")
+
 % 
 % %% Voyage cost
 % figure(6)
