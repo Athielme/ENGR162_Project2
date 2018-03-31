@@ -1,45 +1,63 @@
+clc;
 t_start = 0;
-t_end = 10;
-del_t = .1;
+t_end = 1000;
+del_t = 10;
 times = [t_start:del_t:t_end];
 
-berg_size = [200,200,70];
-berg_mass = berg_size(1)*berg_size(2)*berg_size(3)*1000;
-
-air_v_x = sin([0:t_end]);
-air_v_x = interp1([0:t_end], air_v_x, times);
-
-air_v_y = [-5:10];
-air_v_y = interp1([-5:10], air_v_y .* 0, times);
-
-air_v = [air_v_x;air_v_y];
-air_v = transpose(air_v);
-
-water_v_x = sin([0:t_end]);
-water_v_x = interp1([0:t_end], water_v_x .* 2, times);
-
-water_v_y = [0:10];
-water_v_y = interp1([0:10], water_v_y, times);
-
-water_v = [water_v_x;water_v_y];
-water_v = transpose(water_v);
-
+%% Berg position setup
 berg_v = [0,0];
 berg_x = 0;
 berg_y = 0;
 
 berg_lat_start = -67.775;
-berg_lon_start = 20.868;
+berg_lon_start = 21.868;
 
-direction = calc_path(berg_lat_start, berg_lon_start, t_end, del_t);
+berg_lat(1) = berg_lat_start;
+berg_lon(1) = berg_lon_start;
+
+berg_size = [200,200,70];
+berg_mass = berg_size(1)*berg_size(2)*berg_size(3)*1000;
+
+%% Air setup
+air_lat = ncread('wind_data.nc','lat');
+air_lon = ncread('wind_data.nc','lon');
+
+air_u = ncread('wind_data.nc','u');
+air_u = air_u(1:length(air_lon),1:length(air_lat));
+air_u(isnan(air_u)) = 4;
+
+air_v = ncread('wind_data.nc','v');
+air_v = air_v(1:length(air_lon),1:length(air_lat));
+air_v(isnan(air_v)) = 4;
+
+air_velocity(1,:) = get_wind(air_lat, air_lon, air_u, air_v, berg_lat_start, berg_lon_start);
+
+%% Water Setup
+water_lat = ncread('water_data.nc4', 'latitude');
+water_lon = ncread('water_data.nc4', 'longitude');
+water_u = ncread('water_data.nc4', 'u');
+water_v = ncread('water_data.nc4', 'v');
+water_velocity(1,:) = get_current(water_lat, water_lon, water_u, water_v, berg_lat_start, berg_lon_start);
+%%
+
+direction(1,:) = calc_path(berg_lat_start, berg_lon_start);
 
 %% Main Calculation Loop
+disp("Starting main loop...")
+% norm_berg = 0:length(times);
+% berg_x = zeros(length(times) + 1);
+% berg_y = zeros(length(times) + 1);
+% berg_lat = zeros(length(times) + 1);
+% berg_lon = zeros(length(times) + 1);
 counter = 1;
 for t = times
-    %water_v(counter + 1) = get_current(berg_lat(counter), berg_lon(counter);
+    direction(counter + 1,:) = calc_path(berg_lat, berg_lon);
     
-    air_force = F_air(air_v(counter,:),berg_v(counter,:), berg_size);
-    water_force = F_water(water_v(counter,:), berg_v(counter,:), berg_size);
+    water_velocity(counter + 1,:) = get_current(water_lat, water_lon, water_u, water_v, berg_lat(counter), berg_lon(counter));
+    air_velocity(counter + 1,:) = get_wind(air_lat, air_lon, air_u, air_v, berg_lat(counter), berg_lon(counter));
+    
+    air_force = F_air(air_velocity(counter,:),berg_v(counter,:), berg_size);
+    water_force = F_water(water_velocity(counter,:), berg_v(counter,:), berg_size);
     boat_force = F_boat(direction(counter,:), air_force + water_force);
     berg_force = air_force + water_force + boat_force;
     
@@ -50,9 +68,13 @@ for t = times
     berg_x(counter + 1) = berg_x(counter) + berg_v(counter + 1, 1) * del_t;
     berg_y(counter + 1) = berg_y(counter) + berg_v(counter + 1, 2) * del_t;
     
-    %berg_lat(counter + 1) = berg_lat(counter) + meter_to_lat(berg_y);
-    %berg_lon(counter + 1) = berg_lon(counter) + meter_to_lon(berg_x);
+    berg_lat(counter + 1) = berg_lat_start + meter_to_lat(berg_y(counter));
+    berg_lon(counter + 1) = berg_lon_start + meter_to_lon(berg_x(counter));
     
+    
+    if mod(t,10) == 0
+        disp(t)
+    end
     counter = counter + 1;
 end
 
@@ -65,21 +87,21 @@ end
 % xlim([-20 20])
 % ylim([-20 20])
 % 
-%% ICEBERG POSITION (Small Scale)
-figure(2)
-scatter(berg_x,berg_y)
-title("Position of Iceberg (Small Scale)")
-xlabel("X Position (m)")
-ylabel("Y Position (m)")
-
-% %% ICEBERG POSITION (Large Scale)
-% figure(3)
+% %% ICEBERG POSITION (Small Scale)
+% figure(2)
 % scatter(berg_x,berg_y)
-% 
-% title("Position of Iceberg (Large Scale)")
-% xlabel("X Position (km)")
-% ylabel("Y Position (km)")
-% 
+% title("Position of Iceberg (Small Scale)")
+% xlabel("X Position (m)")
+% ylabel("Y Position (m)")
+
+%% ICEBERG POSITION (Large Scale)
+figure(3)
+scatter(berg_lon,berg_lat)
+
+title("Position of Iceberg (Large Scale)")
+xlabel("X Position (km)")
+ylabel("Y Position (km)")
+
 % %% Tugboat Force 
 % figure(4)
 % plot(times, norm_berg)
