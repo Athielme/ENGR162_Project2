@@ -15,10 +15,12 @@ berg_lon_start = 21.868;
 berg_lat(1) = berg_lat_start;
 berg_lon(1) = berg_lon_start;
 
+direction(1,:) = calc_path(berg_lat_start, berg_lon_start);
+
 berg_size = [200,200,70];
 berg_mass = berg_size(1)*berg_size(2)*berg_size(3)*1000;
 
-%% Air setup
+%% Air/wind setup
 air_lat = ncread('wind_data.nc','lat');
 air_lon = ncread('wind_data.nc','lon');
 
@@ -28,9 +30,19 @@ air_u(isnan(air_u)) = 4;
 
 air_v = ncread('wind_data.nc','v');
 air_v = air_v(1:length(air_lon),1:length(air_lat));
-air_v(isnan(air_v)) = 4;
+air_v(isnan(air_v)) = 4; %% Replace missing values with average value of 4 m/s
 
 air_velocity(1,:) = get_wind(air_lat, air_lon, air_u, air_v, berg_lat_start, berg_lon_start);
+
+%% Air temperature setup
+temp_data = importdata('Modified Water Temp Data.csv');
+
+temp_lat = temp_data(2:end, 1);
+temp_lon = temp_data(1, 2:end);
+
+temps = temp_data(2:end,2:end);
+temps(find(temps == 99999)) = 0; % replace missing values with 0
+water_temp(1) = get_temp(temp_lat, temp_lon, temps, berg_lat_start, berg_lon_start);
 
 %% Water Setup
 water_lat = ncread('water_data.nc4', 'latitude');
@@ -38,9 +50,6 @@ water_lon = ncread('water_data.nc4', 'longitude');
 water_u = ncread('water_data.nc4', 'u');
 water_v = ncread('water_data.nc4', 'v');
 water_velocity(1,:) = get_current(water_lat, water_lon, water_u, water_v, berg_lat_start, berg_lon_start);
-%%
-
-direction(1,:) = calc_path(berg_lat_start, berg_lon_start);
 
 %% Main Calculation Loop
 disp("Starting main loop...")
@@ -55,7 +64,9 @@ for t = times
     
     water_velocity(counter + 1,:) = get_current(water_lat, water_lon, water_u, water_v, berg_lat(counter), berg_lon(counter));
     air_velocity(counter + 1,:) = get_wind(air_lat, air_lon, air_u, air_v, berg_lat(counter), berg_lon(counter));
+    water_temp(counter + 1) = get_temp(temp_lat, temp_lon, temps, berg_lat(counter), berg_lon(counter));
     
+    berg_size(1) = temp_melting(water_temp(counter), del_t);
     air_force = F_air(air_velocity(counter,:),berg_v(counter,:), berg_size);
     water_force = F_water(water_velocity(counter,:), berg_v(counter,:), berg_size);
     boat_force = F_boat(direction(counter,:), air_force + water_force);
